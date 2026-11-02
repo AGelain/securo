@@ -1,0 +1,55 @@
+# Securo no servidor do idxmonitor (167.86.102.52) — Studio Ágil - Adriano Gelain · www.studioagil.com.br
+#
+# Sobrepõe o docker-compose.prod.yml do upstream sem editá-lo, para que
+# atualizar o upstream continue sendo um merge limpo:
+#   - versão fixada (SECURO_VERSION no .env), nunca :latest;
+#   - nada publicado fora do 127.0.0.1: o acesso de fora passa pelo Apache com HTTPS;
+#   - senha própria do Postgres (o upstream usa postgres:postgres).
+#
+# Subir:  docker compose -f docker-compose.prod.yml -f deploy/idxmonitor/compose.override.yml up -d
+
+x-db-url: &db-url
+  DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@db:5432/securo
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    logging: *logging
+
+  redis:
+    logging: *logging
+
+  backend:
+    image: ghcr.io/securo-finance/securo-backend:${SECURO_VERSION:?defina SECURO_VERSION no .env}
+    environment: *db-url
+    ports: !override
+      - "127.0.0.1:${BACKEND_PORT:-8131}:8000"
+    logging: *logging
+
+  frontend:
+    image: ghcr.io/securo-finance/securo-frontend:${SECURO_VERSION:?defina SECURO_VERSION no .env}
+    environment:
+      FRONTEND_URL: ${FRONTEND_URL}
+    ports: !override
+      - "127.0.0.1:${FRONTEND_PORT:-8130}:8080"
+    logging: *logging
+
+  celery-worker:
+    image: ghcr.io/securo-finance/securo-backend:${SECURO_VERSION:?defina SECURO_VERSION no .env}
+    environment: *db-url
+    logging: *logging
+
+  celery-beat:
+    image: ghcr.io/securo-finance/securo-backend:${SECURO_VERSION:?defina SECURO_VERSION no .env}
+    environment: *db-url
+    logging: *logging
+
+  mcp-server:
+    image: ghcr.io/securo-finance/securo-backend:${SECURO_VERSION:?defina SECURO_VERSION no .env}
+    environment: *db-url
+    logging: *logging
