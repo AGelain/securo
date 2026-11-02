@@ -12,6 +12,8 @@ map $cookie_i18next $idioma_padrao {
 
 server {
     listen 8080;
+    # Redirecionamentos relativos: atrás do Apache, o absoluto saía com a porta interna (/dre → :8080/dre/).
+    absolute_redirect off;
     root /usr/share/nginx/html;
     index index.html;
 
