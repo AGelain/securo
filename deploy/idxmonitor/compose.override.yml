@@ -39,6 +39,9 @@ services:
       FRONTEND_URL: ${FRONTEND_URL}
     ports: !override
       - "127.0.0.1:${FRONTEND_PORT:-8130}:8080"
+    # Português do Brasil como idioma padrão (ver o cabeçalho do arquivo).
+    volumes:
+      - ./deploy/idxmonitor/nginx-frontend.conf.template:/etc/nginx/templates/default.conf.template:ro
     logging: *logging
 
   celery-worker:

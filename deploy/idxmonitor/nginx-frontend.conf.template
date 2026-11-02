@@ -1,0 +1,64 @@
+# Cópia do frontend/default.conf.template do upstream (v0.16.6) com uma mudança:
+# o português do Brasil vira o idioma padrão. O Securo lê o idioma do navegador
+# na ordem querystring → localStorage → cookie "i18next" e, sem nenhum, cai no
+# inglês. Este cookie só é enviado a quem ainda não tem um, então a escolha
+# feita pelo menu continua valendo.
+# Ao atualizar o upstream, compare com o original: diff frontend/default.conf.template deploy/idxmonitor/nginx-frontend.conf.template
+# Studio Ágil - Adriano Gelain · www.studioagil.com.br
+map $cookie_i18next $idioma_padrao {
+    ""      "i18next=pt-BR; Path=/; Max-Age=31536000; Secure; SameSite=Lax";
+    default "";
+}
+
+server {
+    listen 8080;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # API proxy to backend.
+    # Resolve the backend hostname at request time via Docker's embedded DNS
+    # instead of caching the IP at startup. Without this, Nginx pins the
+    # upstream IP when the config loads and returns 502s after the backend
+    # container is recreated with a new IP (e.g. selective redeploys where the
+    # frontend container is left running). Using a variable in proxy_pass forces
+    # re-resolution. NGINX_RESOLVER is derived from the platform's own
+    # /etc/resolv.conf at startup (see docker-entrypoint.d/19-resolver.envsh),
+    # so this works as-is on Docker, Podman, Kubernetes and Railway. Set
+    # NGINX_RESOLVER explicitly to override that detection.
+    location /api/ {
+        resolver ${NGINX_RESOLVER} valid=5s;
+        set $upstream ${BACKEND_URL};
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Connecting a bank imports its whole history in this one request; a
+    # SimpleFIN link with several institutions can take well over nginx's
+    # default 60s read timeout, which turned a working import into a 504
+    # "Failed to connect bank" (issue #1148).
+    location = /api/connections/oauth/callback {
+        resolver ${NGINX_RESOLVER} valid=5s;
+        set $upstream ${BACKEND_URL};
+        proxy_pass $upstream;
+        proxy_read_timeout 300s;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Never cache index.html so new deployments are always picked up immediately
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+        add_header Set-Cookie $idioma_padrao;
+        try_files $uri =404;
+    }
+
+    # SPA fallback — serve index.html for all non-file routes
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
