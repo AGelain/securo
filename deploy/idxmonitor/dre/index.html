@@ -1,0 +1,353 @@
+<!doctype html>
+<!-- DRE gerencial mensal (regime de caixa) do espaço da empresa no Securo.
+     Só lê a API com o login que já está no navegador; não grava nada.
+     As linhas vêm dos grupos de categoria numerados "1." a "8." do espaço da empresa.
+     Studio Ágil - Adriano Gelain · www.studioagil.com.br -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DRE · Securo</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+:root {
+  --bg: #f7f8fa; --surface: #ffffff; --fg: #111827; --muted: #6b7280; --line: #e5e7eb;
+  --accent: #6366f1; --pos: #15803d; --neg: #b91c1c; --total-bg: #f1f2f6; --warn-bg: #fff7e6; --warn: #92400e;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0d12; --surface: #12151c; --fg: #e5e7eb; --muted: #8b93a3; --line: #232835;
+    --accent: #818cf8; --pos: #4ade80; --neg: #f87171; --total-bg: #181c26; --warn-bg: #2a2110; --warn: #fbbf24;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b0d12; --surface: #12151c; --fg: #e5e7eb; --muted: #8b93a3; --line: #232835;
+  --accent: #818cf8; --pos: #4ade80; --neg: #f87171; --total-bg: #181c26; --warn-bg: #2a2110; --warn: #fbbf24;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width: 1400px; margin: 0 auto; padding: 28px max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left)); display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+h1 { margin: 0; font-size: 26px; }
+.sub { color: var(--muted); margin: 2px 0 0; }
+.ctrl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select, button, a.btn { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; text-decoration: none; }
+button:hover, a.btn:hover { border-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.kpi b { display: block; font-size: 12px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+.kpi span { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kpi small { color: var(--muted); }
+.aviso { background: var(--warn-bg); color: var(--warn); border-radius: 10px; padding: 10px 14px; }
+.tabela { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 260px; }
+thead th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+tr.grupo td:first-child { cursor: pointer; }
+tr.grupo td:first-child::before { content: "▸ "; color: var(--muted); }
+tr.grupo.aberto td:first-child::before { content: "▾ "; }
+tr.cat td { color: var(--muted); font-size: 13px; }
+tr.cat td:first-child { padding-left: 30px; }
+tr.total td { font-weight: 700; background: var(--total-bg); }
+tr.total td:first-child { background: var(--total-bg); }
+tr.margem td { color: var(--muted); font-size: 12.5px; font-style: italic; }
+td.neg { color: var(--neg); }
+td.pos { color: var(--pos); }
+td.acum { border-left: 2px solid var(--line); font-weight: 600; }
+td.pct { color: var(--muted); font-size: 12.5px; }
+.vazio { padding: 40px; text-align: center; color: var(--muted); }
+footer { color: var(--muted); font-size: 12.5px; }
+@media print {
+  .ctrl, .no-print { display: none !important; }
+  body { background: #fff; color: #000; font-size: 10px; }
+  .tabela { overflow: visible; border: 0; }
+  th:first-child, td:first-child { position: static; min-width: 0; }
+  tr.cat { display: table-row !important; }
+  @page { size: A4 landscape; margin: 10mm; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>DRE gerencial</h1>
+      <p class="sub" id="sub">Carregando…</p>
+    </div>
+    <div class="ctrl">
+      <select id="empresa" aria-label="Empresa" hidden></select>
+      <select id="ano" aria-label="Ano"></select>
+      <button type="button" id="expandir">Abrir categorias</button>
+      <button type="button" id="csv">Baixar planilha (CSV)</button>
+      <button type="button" onclick="window.print()">Imprimir / PDF</button>
+      <a class="btn" href="/">Voltar ao Securo</a>
+    </div>
+  </header>
+  <div id="avisos"></div>
+  <div class="kpis" id="kpis"></div>
+  <div class="tabela" id="tabela"><div class="vazio">Carregando lançamentos…</div></div>
+  <footer>
+    Regime de caixa: cada lançamento entra no mês da data do extrato. Transferências entre contas, distribuição de lucros,
+    empréstimos e aportes ficam fora da DRE. Os valores são gerenciais; o oficial é o que o contador apura no PGDAS-D e na escrituração.
+  </footer>
+</div>
+<script>
+(function () {
+  'use strict';
+  var MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  // Estrutura da DRE: linhas de grupo (pelo número do grupo) e totais calculados.
+  var ESTRUTURA = [
+    { g: 1, nome: 'Receita bruta' },
+    { g: 2, nome: '(−) Deduções da receita' },
+    { t: 'Receita líquida', soma: [1, 2] },
+    { g: 3, nome: '(−) Custo dos serviços' },
+    { t: 'Lucro bruto', soma: [1, 2, 3], margem: 'Margem bruta' },
+    { g: 4, nome: '(−) Despesas com pessoal' },
+    { g: 5, nome: '(−) Despesas administrativas' },
+    { g: 6, nome: '(−) Despesas comerciais' },
+    { g: 0, nome: '(?) Sem categoria' },
+    { t: 'Resultado operacional', soma: [1, 2, 3, 4, 5, 6, 0], margem: 'Margem operacional' },
+    { g: 7, nome: '(±) Resultado financeiro' },
+    { t: 'Resultado líquido do período', soma: [1, 2, 3, 4, 5, 6, 0, 7], margem: 'Margem líquida' }
+  ];
+
+  try {
+    var tema = localStorage.getItem('theme');
+    if (tema === 'dark' || tema === 'light') document.documentElement.setAttribute('data-theme', tema);
+  } catch (e) {}
+
+  var token = null;
+  try { token = localStorage.getItem('token'); } catch (e) {}
+  var $ = function (id) { return document.getElementById(id); };
+  var fmt = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  var fmtPct = new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  var estado = { empresas: [], ws: null, ano: new Date().getFullYear(), dados: null, abertos: {} };
+
+  function sair(msg) {
+    $('sub').textContent = msg;
+    $('tabela').innerHTML = '<div class="vazio">' + msg + ' <a href="/login">Entrar no Securo</a></div>';
+  }
+
+  function api(caminho, ws) {
+    var h = { Authorization: 'Bearer ' + token };
+    if (ws) h['X-Workspace-Id'] = ws;
+    return fetch(caminho, { headers: h }).then(function (r) {
+      if (r.status === 401) throw new Error('login');
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' em ' + caminho);
+      return r.json();
+    });
+  }
+
+  function numeroGrupo(nome) {
+    var m = /^\s*(\d)\s*[.)-]/.exec(nome || '');
+    return m ? Number(m[1]) : null;
+  }
+
+  function carregarTudo(ws, ano) {
+    var paginas = [];
+    function pagina(p) {
+      var q = '/api/transactions?from=' + ano + '-01-01&to=' + ano + '-12-31&limit=500&page=' + p + '&exclude_ignored=true&sort_by=date&sort_dir=asc';
+      return api(q, ws).then(function (r) {
+        paginas = paginas.concat(r.items);
+        if (paginas.length < r.total && r.items.length) return pagina(p + 1);
+        return paginas;
+      });
+    }
+    return Promise.all([api('/api/category-groups', ws), api('/api/categories', ws), pagina(1)]);
+  }
+
+  function montar(grupos, cats, txs) {
+    var grupoPorId = {};
+    grupos.forEach(function (g) { grupoPorId[g.id] = g; });
+    var catPorId = {};
+    cats.forEach(function (c) { catPorId[c.id] = c; });
+
+    // linhas[g] = { total: [12], cats: { nome: [12] } }
+    var linhas = {};
+    for (var g = 0; g <= 8; g++) linhas[g] = { total: zeros(), cats: {} };
+    var semGrupo = 0, transfSemCat = 0;
+
+    txs.forEach(function (t) {
+      var mes = Number(String(t.date).slice(5, 7)) - 1;
+      var bruto = Math.abs(Number(t.amount_primary != null ? t.amount_primary : t.amount));
+      var valor = t.type === 'credit' ? bruto : -bruto;
+      var cat = t.category_id ? catPorId[t.category_id] || t.category : null;
+      var num;
+      if (!cat) {
+        if (t.transfer_pair_id) { transfSemCat++; num = 8; }
+        else num = 0;
+      } else {
+        var grupo = grupoPorId[cat.group_id];
+        num = grupo ? numeroGrupo(grupo.name) : null;
+        if (num === null) { semGrupo++; num = cat.treat_as_transfer ? 8 : 0; }
+      }
+      var nomeCat = cat ? cat.name : (num === 8 ? 'Transferências sem categoria' : 'Sem categoria');
+      var l = linhas[num];
+      l.total[mes] += valor;
+      (l.cats[nomeCat] = l.cats[nomeCat] || zeros())[mes] += valor;
+    });
+    return { linhas: linhas, semGrupo: semGrupo, transfSemCat: transfSemCat, n: txs.length };
+  }
+
+  function zeros() { return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; }
+  function soma(a) { return a.reduce(function (x, y) { return x + y; }, 0); }
+  function somaLinhas(d, nums) {
+    var r = zeros();
+    nums.forEach(function (n) { d.linhas[n].total.forEach(function (v, i) { r[i] += v; }); });
+    return r;
+  }
+  function classe(v) { return Math.abs(v) < 0.005 ? '' : (v < 0 ? 'neg' : 'pos'); }
+  function cel(v, extra) { return '<td class="' + classe(v) + (extra ? ' ' + extra : '') + '">' + (Math.abs(v) < 0.005 ? '–' : fmt.format(v)) + '</td>'; }
+  function pct(v, base) { return '<td class="pct">' + (base > 0.005 ? fmtPct.format(v / base) : '') + '</td>'; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function render() {
+    var d = estado.dados;
+    var receitaMes = d.linhas[1].total;
+    var receitaAno = soma(receitaMes);
+    var h = '<table><thead><tr><th>' + estado.ano + '</th>';
+    MESES.forEach(function (m) { h += '<th>' + m + '</th>'; });
+    h += '<th>Acumulado</th><th>% receita</th></tr></thead><tbody>';
+
+    ESTRUTURA.forEach(function (item) {
+      if (item.g !== undefined) {
+        var l = d.linhas[item.g];
+        var nomes = Object.keys(l.cats).sort();
+        if (item.g === 0 && !nomes.length) return;
+        var aberto = !!estado.abertos[item.g];
+        h += '<tr class="grupo' + (aberto ? ' aberto' : '') + '" data-g="' + item.g + '"><td>' + item.nome + '</td>';
+        l.total.forEach(function (v) { h += cel(v); });
+        h += cel(soma(l.total), 'acum') + pct(soma(l.total), receitaAno) + '</tr>';
+        nomes.forEach(function (n) {
+          h += '<tr class="cat" data-pai="' + item.g + '"' + (aberto ? '' : ' hidden') + '><td>' + esc(n) + '</td>';
+          l.cats[n].forEach(function (v) { h += cel(v); });
+          h += cel(soma(l.cats[n]), 'acum') + pct(soma(l.cats[n]), receitaAno) + '</tr>';
+        });
+      } else {
+        var t = somaLinhas(d, item.soma);
+        h += '<tr class="total"><td>' + item.t + '</td>';
+        t.forEach(function (v) { h += cel(v); });
+        h += cel(soma(t), 'acum') + pct(soma(t), receitaAno) + '</tr>';
+        if (item.margem) {
+          h += '<tr class="margem"><td>' + item.margem + '</td>';
+          t.forEach(function (v, i) { h += '<td>' + (receitaMes[i] > 0.005 ? fmtPct.format(v / receitaMes[i]) : '') + '</td>'; });
+          h += '<td class="acum">' + (receitaAno > 0.005 ? fmtPct.format(soma(t) / receitaAno) : '') + '</td><td></td></tr>';
+        }
+      }
+    });
+
+    // Fora da DRE, só para conferência.
+    var fora = d.linhas[8];
+    var nomesFora = Object.keys(fora.cats).sort();
+    if (nomesFora.length) {
+      h += '<tr><td colspan="15" style="padding-top:18px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em">Fora da DRE (conferência de caixa)</td></tr>';
+      nomesFora.forEach(function (n) {
+        h += '<tr class="cat"><td>' + esc(n) + '</td>';
+        fora.cats[n].forEach(function (v) { h += cel(v); });
+        h += cel(soma(fora.cats[n]), 'acum') + '<td></td></tr>';
+      });
+    }
+    h += '</tbody></table>';
+    $('tabela').innerHTML = d.n ? h : '<div class="vazio">Nenhum lançamento em ' + estado.ano + ' no espaço ' + esc(estado.ws.name) + '. Importe os extratos (OFX ou CSV) em Importar.</div>';
+
+    var res = soma(somaLinhas(d, [1, 2, 3, 4, 5, 6, 0, 7]));
+    var bruto = soma(somaLinhas(d, [1, 2, 3]));
+    var k = [
+      ['Receita bruta', receitaAno, ''],
+      ['Lucro bruto', bruto, receitaAno > 0.005 ? fmtPct.format(bruto / receitaAno) + ' da receita' : ''],
+      ['Resultado líquido', res, receitaAno > 0.005 ? fmtPct.format(res / receitaAno) + ' da receita' : ''],
+      ['Distribuição de lucros', soma((fora.cats['Distribuição de lucros'] || zeros())), 'fora da DRE']
+    ];
+    $('kpis').innerHTML = k.map(function (x) {
+      return '<div class="kpi"><b>' + x[0] + ' ' + estado.ano + '</b><span class="' + classe(x[1]) + '">R$ ' + fmt.format(x[1]) + '</span><br><small>' + x[2] + '</small></div>';
+    }).join('');
+
+    var av = [];
+    var semCat = d.linhas[0].total.reduce(function (a, v) { return a + Math.abs(v); }, 0);
+    if (semCat > 0.005) av.push('R$ ' + fmt.format(semCat) + ' em lançamentos sem categoria. Classifique em Lançamentos para a DRE ficar certa.');
+    if (d.semGrupo) av.push(d.semGrupo + ' lançamento(s) em categorias fora dos grupos numerados da DRE.');
+    $('avisos').innerHTML = av.map(function (a) { return '<div class="aviso">' + a + '</div>'; }).join('');
+    $('sub').textContent = estado.ws.name + ' · regime de caixa · ' + d.n + ' lançamentos em ' + estado.ano;
+  }
+
+  function csv() {
+    var d = estado.dados;
+    var linhas = [['Linha'].concat(MESES, ['Acumulado'])];
+    var n2 = function (v) { return v.toFixed(2).replace('.', ','); };
+    ESTRUTURA.forEach(function (item) {
+      if (item.g !== undefined) {
+        var l = d.linhas[item.g];
+        if (item.g === 0 && !Object.keys(l.cats).length) return;
+        linhas.push([item.nome].concat(l.total.map(n2), [n2(soma(l.total))]));
+        Object.keys(l.cats).sort().forEach(function (c) {
+          linhas.push(['   ' + c].concat(l.cats[c].map(n2), [n2(soma(l.cats[c]))]));
+        });
+      } else {
+        var t = somaLinhas(d, item.soma);
+        linhas.push([item.t].concat(t.map(n2), [n2(soma(t))]));
+      }
+    });
+    var txt = '﻿' + linhas.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';'); }).join('\r\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'DRE-' + estado.ano + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  function atualizar() {
+    $('tabela').innerHTML = '<div class="vazio">Carregando lançamentos…</div>';
+    carregarTudo(estado.ws.id, estado.ano).then(function (r) {
+      estado.dados = montar(r[0], r[1], r[2]);
+      render();
+    }).catch(erro);
+  }
+
+  function erro(e) {
+    if (e && e.message === 'login') return sair('Sua sessão expirou.');
+    $('sub').textContent = 'Não foi possível carregar a DRE.';
+    $('tabela').innerHTML = '<div class="vazio">' + esc(e && e.message || e) + '</div>';
+  }
+
+  $('tabela').addEventListener('click', function (ev) {
+    var tr = ev.target.closest('tr.grupo');
+    if (!tr) return;
+    var g = tr.getAttribute('data-g');
+    estado.abertos[g] = !estado.abertos[g];
+    render();
+  });
+  $('expandir').addEventListener('click', function () {
+    var todos = [0, 1, 2, 3, 4, 5, 6, 7].every(function (g) { return estado.abertos[g]; });
+    [0, 1, 2, 3, 4, 5, 6, 7].forEach(function (g) { estado.abertos[g] = !todos; });
+    this.textContent = todos ? 'Abrir categorias' : 'Fechar categorias';
+    render();
+  });
+  $('csv').addEventListener('click', function () { if (estado.dados) csv(); });
+  $('ano').addEventListener('change', function () { estado.ano = Number(this.value); atualizar(); });
+  $('empresa').addEventListener('change', function () {
+    estado.ws = estado.empresas.filter(function (w) { return w.id === this.value; }, this)[0];
+    atualizar();
+  });
+
+  if (!token) return sair('Entre no Securo para ver a DRE.');
+  var atual = new Date().getFullYear();
+  for (var a = atual; a >= atual - 5; a--) $('ano').insertAdjacentHTML('beforeend', '<option value="' + a + '">' + a + '</option>');
+
+  api('/api/workspaces').then(function (lista) {
+    estado.empresas = lista.filter(function (w) { return w.kind === 'business'; });
+    if (!estado.empresas.length) return sair('Nenhum espaço de empresa encontrado.');
+    estado.ws = estado.empresas[0];
+    if (estado.empresas.length > 1) {
+      $('empresa').hidden = false;
+      $('empresa').innerHTML = estado.empresas.map(function (w) { return '<option value="' + w.id + '">' + esc(w.name) + '</option>'; }).join('');
+    }
+    atualizar();
+  }).catch(erro);
+})();
+</script>
+</body>
+</html>

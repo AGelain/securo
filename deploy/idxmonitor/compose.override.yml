@@ -42,6 +42,8 @@ services:
     # Português do Brasil como idioma padrão (ver o cabeçalho do arquivo).
     volumes:
       - ./deploy/idxmonitor/nginx-frontend.conf.template:/etc/nginx/templates/default.conf.template:ro
+      # DRE gerencial mensal em /dre (só leitura, usa o login do Securo).
+      - ./deploy/idxmonitor/dre:/usr/share/nginx/html/dre:ro
     logging: *logging
 
   celery-worker:
