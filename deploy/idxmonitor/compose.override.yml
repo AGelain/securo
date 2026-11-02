@@ -10,6 +10,8 @@
 
 x-db-url: &db-url
   DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@db:5432/securo
+  # O upstream deixa o cadastro público aberto por padrão; aqui só o admin cria usuários.
+  REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
 
 x-logging: &logging
   driver: json-file
